@@ -6,10 +6,10 @@
     android:viewportHeight="112">
     <path
         android:pathData="M104.0000 56.0000 a48.0000 48.0000 0 1 1 -96.0000 0 a48.0000 48.0000 0 1 1 96.0000 0 z"
-        android:fillColor="#14FFFFFF"
+        android:fillColor="@color/figma_content_color_1primary_primary_04_d8_l8"
     />
     <path
         android:pathData="M77.3337 66.7895C77.3337 77.9514 67.7824 87 56.0003 87C44.2183 87 34.667 77.9514 34.667 66.7895C34.667 57.3148 50.0381 32.3738 54.6852 25.0499C55.3035 24.0755 56.6971 24.0755 57.3154 25.0499C61.9626 32.3738 77.3337 57.3148 77.3337 66.7895Z"
-        android:fillColor="#FF35B668"
+        android:fillColor="@color/figma_text_icon_8success_primary_success_primary_01_d100_l100"
     />
 </vector>

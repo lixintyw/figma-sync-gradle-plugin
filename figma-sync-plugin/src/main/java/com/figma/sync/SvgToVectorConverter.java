@@ -303,7 +303,7 @@ public class SvgToVectorConverter {
         if (colorResMap != null) {
             String resName = colorResMap.get(hex.toUpperCase(Locale.ROOT));
             if (resName != null) {
-                return "@color/figma_" + resName;
+                return "@color/" + resName;
             }
         }
 

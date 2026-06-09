@@ -6,30 +6,30 @@
     android:viewportHeight="112">
     <path
         android:pathData="M34 66C35.1046 66 36 66.8954 36 68V100C36 101.105 35.1046 102 34 102H30C28.8954 102 28 101.105 28 100V68C28 66.8954 28.8954 66 30 66H34Z"
-        android:fillColor="#CCFFFFFF"
+        android:fillColor="@color/figma_text_icon_1primary_primary_02_d80_l100"
     />
     <path
         android:pathData="M82 66C83.1046 66 84 66.8954 84 68V100C84 101.105 83.1046 102 82 102H78C76.8954 102 76 101.105 76 100V68C76 66.8954 76.8954 66 78 66H82Z"
-        android:fillColor="#CCFFFFFF"
+        android:fillColor="@color/figma_text_icon_1primary_primary_02_d80_l100"
     />
     <path
         android:pathData="M58 74C59.1046 74 60 74.8954 60 76V92C60 93.1046 59.1046 94 58 94H54C52.8954 94 52 93.1046 52 92V76C52 74.8954 52.8954 74 54 74H58Z"
-        android:fillColor="#CCFFFFFF"
+        android:fillColor="@color/figma_text_icon_1primary_primary_02_d80_l100"
     />
     <path
         android:pathData="M90 48C92.2091 48 94 49.7909 94 52V66H88V60H24V66H18V52C18 49.7909 19.7909 48 22 48H90Z"
-        android:fillColor="#CCFFFFFF"
+        android:fillColor="@color/figma_text_icon_1primary_primary_02_d80_l100"
     />
     <path
         android:pathData="M34 8C35.1046 8 36 8.89543 36 10V40C36 41.1046 35.1046 42 34 42H30C28.8954 42 28 41.1046 28 40V10C28 8.89543 28.8954 8 30 8H34Z"
-        android:fillColor="#CCFFFFFF"
+        android:fillColor="@color/figma_text_icon_1primary_primary_02_d80_l100"
     />
     <path
         android:pathData="M82 8C83.1046 8 84 8.89543 84 10V40C84 41.1046 83.1046 42 82 42H78C76.8954 42 76 41.1046 76 40V10C76 8.89543 76.8954 8 78 8H82Z"
-        android:fillColor="#CCFFFFFF"
+        android:fillColor="@color/figma_text_icon_1primary_primary_02_d80_l100"
     />
     <path
         android:pathData="M58 18C59.1046 18 60 18.8954 60 20V34C60 35.1046 59.1046 36 58 36H54C52.8954 36 52 35.1046 52 34V20C52 18.8954 52.8954 18 54 18H58Z"
-        android:fillColor="#CCFFFFFF"
+        android:fillColor="@color/figma_text_icon_1primary_primary_02_d80_l100"
     />
 </vector>

@@ -6,42 +6,42 @@
     android:viewportHeight="112">
     <path
         android:pathData="M72.0002 56C72.0002 47.1634 64.8367 40 56.0002 40C47.1636 40 40.0002 47.1634 40.0002 56C40.0002 64.8366 47.1636 72 56.0002 72V80C42.7454 80 32.0002 69.2548 32.0002 56C32.0002 42.7452 42.7454 32 56.0002 32C69.255 32 80.0002 42.7452 80.0002 56C80.0002 69.2548 69.255 80 56.0002 80V72C64.8367 72 72.0002 64.8366 72.0002 56Z"
-        android:fillColor="#FFFFFFFF"
+        android:fillColor="@color/figma_text_icon_1primary_primary_01_d100_l100"
     />
     <path
         android:pathData="M56.0002 68C54.4243 68 52.8639 67.6896 51.408 67.0866C49.9521 66.4835 48.6292 65.5996 47.5149 64.4853C46.4006 63.371 45.5167 62.0481 44.9136 60.5922C44.3106 59.1363 44.0002 57.5759 44.0002 56C44.0002 54.4241 44.3106 52.8637 44.9136 51.4078C45.5167 49.9519 46.4006 48.629 47.5149 47.5147C48.6292 46.4004 49.9521 45.5165 51.408 44.9134C52.8639 44.3104 54.4243 44 56.0002 44L56.0002 68Z"
-        android:fillColor="#FFFFFFFF"
+        android:fillColor="@color/figma_text_icon_1primary_primary_01_d100_l100"
     />
     <path
         android:pathData="M52.0002 16C52.0002 11.5817 55.5819 8 60.0002 8V16C60.0002 20.4183 56.4185 24 52.0002 24V16Z"
-        android:fillColor="#FFFFFFFF"
+        android:fillColor="@color/figma_text_icon_1primary_primary_01_d100_l100"
     />
     <path
         android:pathData="M52.0002 96C52.0002 91.5817 55.5819 88 60.0002 88V96C60.0002 100.418 56.4185 104 52.0002 104V96Z"
-        android:fillColor="#FFFFFFFF"
+        android:fillColor="@color/figma_text_icon_1primary_primary_01_d100_l100"
     />
     <path
         android:pathData="M81.4566 24.8874C84.5808 21.7632 89.6461 21.7632 92.7703 24.8874L87.1135 30.5442C83.9893 33.6684 78.924 33.6684 75.7998 30.5442L81.4566 24.8874Z"
-        android:fillColor="#FFFFFFFF"
+        android:fillColor="@color/figma_text_icon_1primary_primary_01_d100_l100"
     />
     <path
         android:pathData="M24.8881 81.4559C28.0123 78.3317 33.0776 78.3317 36.2018 81.4559L30.5449 87.1127C27.4207 90.2369 22.3554 90.2369 19.2312 87.1127L24.8881 81.4559Z"
-        android:fillColor="#FFFFFFFF"
+        android:fillColor="@color/figma_text_icon_1primary_primary_01_d100_l100"
     />
     <path
         android:pathData="M87.1118 81.4575C90.236 84.5817 90.236 89.647 87.1118 92.7712L81.4549 87.1143C78.3307 83.9902 78.3307 78.9248 81.4549 75.8006L87.1118 81.4575Z"
-        android:fillColor="#FFFFFFFF"
+        android:fillColor="@color/figma_text_icon_1primary_primary_01_d100_l100"
     />
     <path
         android:pathData="M30.5433 24.8889C33.6674 28.0131 33.6674 33.0785 30.5433 36.2027L24.8864 30.5458C21.7622 27.4216 21.7622 22.3563 24.8864 19.2321L30.5433 24.8889Z"
-        android:fillColor="#FFFFFFFF"
+        android:fillColor="@color/figma_text_icon_1primary_primary_01_d100_l100"
     />
     <path
         android:pathData="M96 52C100.418 52 104 55.5817 104 60H96C91.5817 60 88 56.4183 88 52H96Z"
-        android:fillColor="#FFFFFFFF"
+        android:fillColor="@color/figma_text_icon_1primary_primary_01_d100_l100"
     />
     <path
         android:pathData="M16 52C20.4183 52 24 55.5817 24 60H16C11.5817 60 8 56.4183 8 52H16Z"
-        android:fillColor="#FFFFFFFF"
+        android:fillColor="@color/figma_text_icon_1primary_primary_01_d100_l100"
     />
 </vector>

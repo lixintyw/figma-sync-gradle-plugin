@@ -6,12 +6,12 @@
     android:viewportHeight="112">
     <path
         android:pathData="M38 40C46.8366 40 54 47.1634 54 56C54 64.8366 46.8366 72 38 72C29.1634 72 22 64.8366 22 56C22 47.1634 29.1634 40 38 40ZM38 48C33.5817 48 30 51.5817 30 56C30 60.4183 33.5817 64 38 64C42.4183 64 46 60.4183 46 56C46 51.5817 42.4183 48 38 48Z"
-        android:fillColor="#CCFFFFFF"
+        android:fillColor="@color/figma_text_icon_1primary_primary_02_d80_l100"
         android:fillType="evenOdd"
     />
     <path
         android:pathData="M74 24C91.6731 24 106 38.3269 106 56C106 73.6731 91.6731 88 74 88H38C20.3269 88 6 73.6731 6 56C6 38.3269 20.3269 24 38 24H74ZM38 32C24.7452 32 14 42.7452 14 56C14 69.2548 24.7452 80 38 80H74C87.2548 80 98 69.2548 98 56C98 42.7452 87.2548 32 74 32H38Z"
-        android:fillColor="#CCFFFFFF"
+        android:fillColor="@color/figma_text_icon_1primary_primary_02_d80_l100"
         android:fillType="evenOdd"
     />
 </vector>
