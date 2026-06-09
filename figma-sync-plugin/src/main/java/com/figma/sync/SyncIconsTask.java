@@ -113,6 +113,11 @@ public abstract class SyncIconsTask extends DefaultTask {
         }
 
         // ── Convert SVG → VectorDrawable ────────────────────────
+        // Load color token resources so the converter can emit @color/xxx references
+        File colorsXml = new File(getProject().getProjectDir(),
+            "src/main/res/values/figma_colors.xml");
+        SvgToVectorConverter.loadColorResources(colorsXml);
+
         int vdCount = SvgToVectorConverter.convertAll(svgDir, drawableDir);
         int vdRtlCount = SvgToVectorConverter.convertAll(svgRtlDir, drawableRtlDir);
         getLogger().lifecycle("[Figma] Converted {} LTR → {}", vdCount, drawableDir.getPath());
