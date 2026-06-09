@@ -49,103 +49,174 @@ public class TokenClient {
      */
     @SuppressWarnings("unchecked")
     public static Map<String, VariableInfo> fetchLocalVariables(String token, String fileKey) throws Exception {
+        return fetchLocalVariablesFiltered(token, fileKey, Collections.emptyList(), false);
+    }
+
+    /**
+     * Fetch local variables with optional chain-download filtering.
+     * <p>
+     * When {@code collectionNames} is non-empty, only variables belonging to those
+     * collections are considered as the initial set. When {@code chainDownload} is true,
+     * the transitive closure of VARIABLE_ALIAS references is computed from the initial set
+     * — meaning "token A → auto-include all tokens A depends on."
+     *
+     * @param token           Figma personal access token
+     * @param fileKey         Figma file key
+     * @param collectionNames variable collection names to include (empty = all)
+     * @param chainDownload   if true, compute transitive alias closure from declared set
+     * @return map of variableId → VariableInfo (filtered by collection + chain closure)
+     */
+    @SuppressWarnings("unchecked")
+    public static Map<String, VariableInfo> fetchLocalVariablesFiltered(
+            String token, String fileKey,
+            List<String> collectionNames, boolean chainDownload) throws Exception {
+
         Map<?, ?> resp = FigmaClient.figmaGet(
             FigmaClient.API_HOST + "/v1/files/" + fileKey + "/variables/local", token);
 
         Map<?, ?> meta = (Map<?, ?>) resp.get("meta");
         if (meta == null) return Collections.emptyMap();
 
-        Map<String, VariableInfo> result = new LinkedHashMap<>();
-
-        // Parse variables
         Map<?, ?> variables = (Map<?, ?>) meta.get("variables");
-        if (variables != null) {
-            Map<String, Map<String, Object>> rawVars = new LinkedHashMap<>();
-            for (Map.Entry<?, ?> e : variables.entrySet()) {
-                String varId = e.getKey().toString();
-                Map<?, ?> v = (Map<?, ?>) e.getValue();
-                String name = v.get("name") != null ? v.get("name").toString() : varId;
-                String resolvedType = v.get("resolvedType") != null ? v.get("resolvedType").toString() : "COLOR";
+        if (variables == null) return Collections.emptyMap();
 
-                // Find the first mode's value (prefer mode "103:0" for light)
-                Object firstValue = null;
-                Map<?, ?> valuesByMode = (Map<?, ?>) v.get("valuesByMode");
-                if (valuesByMode != null && !valuesByMode.isEmpty()) {
-                    // Prefer mode 103:0 (light), fallback to first entry
-                    Object lightVal = valuesByMode.get("103:0");
-                    if (lightVal == null) {
-                        lightVal = valuesByMode.values().iterator().next();
-                    }
-                    firstValue = lightVal;
-                }
-
-                // Resolve color value
-                String colorHex = null;
-                String rawValue = null;
-                if (firstValue instanceof Map) {
-                    Map<?, ?> valMap = (Map<?, ?>) firstValue;
-                    if ("COLOR".equals(resolvedType)) {
-                        // Direct color value: {r, g, b, a}
-                        if (valMap.containsKey("r")) {
-                            colorHex = rgbaToHex(valMap);
+        // ── Compute allowed variable IDs from collection filter ──
+        Set<String> allowedIds = null; // null = all allowed
+        if (!collectionNames.isEmpty()) {
+            allowedIds = new HashSet<>();
+            Map<?, ?> collections = (Map<?, ?>) meta.get("variableCollections");
+            if (collections != null) {
+                Set<String> nameSet = new HashSet<>(collectionNames);
+                for (Map.Entry<?, ?> ce : collections.entrySet()) {
+                    Map<?, ?> col = (Map<?, ?>) ce.getValue();
+                    String colName = col.get("name") != null ? col.get("name").toString() : "";
+                    if (nameSet.contains(colName)) {
+                        Object varIds = col.get("variableIds");
+                        if (varIds instanceof List) {
+                            for (Object vid : (List<?>) varIds) {
+                                allowedIds.add(vid.toString());
+                            }
                         }
-                    } else {
-                        rawValue = valMap.get("value") != null ? valMap.get("value").toString() : valMap.toString();
                     }
-                } else if (firstValue instanceof Boolean || firstValue instanceof Number || firstValue instanceof String) {
-                    rawValue = firstValue.toString();
-                }
-
-                Map<String, Object> rawVar = new LinkedHashMap<>();
-                rawVar.put("id", varId);
-                rawVar.put("name", name);
-                rawVar.put("resolvedType", resolvedType);
-                rawVar.put("colorHex", colorHex);
-                rawVar.put("rawValue", rawValue);
-                rawVars.put(varId, rawVar);
-
-                result.put(varId, new VariableInfo(varId, name, resolvedType, colorHex, rawValue));
-            }
-
-            // Resolve VARIABLE_ALIAS chains (2-pass)
-            // Variables that reference other variables need to be resolved
-            boolean changed;
-            int maxIter = 10; // prevent infinite loops from circular refs
-            do {
-                changed = false;
-                for (Map.Entry<String, Map<String, Object>> entry : rawVars.entrySet()) {
-                    Map<String, Object> rawVar = entry.getValue();
-                    if (rawVar.get("colorHex") != null) continue; // already resolved
-
-                    String resolvedType = (String) rawVar.get("resolvedType");
-                    if (!"COLOR".equals(resolvedType)) continue;
-
-                    VariableInfo vi = result.get(entry.getKey());
-                    if (vi == null) continue;
-
-                    // Check if this variable references another via valuesByMode
-                    // We need to re-check the raw API response since rawVar only stores first value
-                }
-            } while (changed && maxIter-- > 0);
-
-            // Second pass: resolve aliases by walking the valuesByMode from the original API
-            for (Map.Entry<?, ?> e : variables.entrySet()) {
-                String varId = e.getKey().toString();
-                Map<?, ?> v = (Map<?, ?>) e.getValue();
-                Map<?, ?> valuesByMode = (Map<?, ?>) v.get("valuesByMode");
-
-                VariableInfo vi = result.get(varId);
-                if (vi == null || vi.colorHex != null) continue; // already has color
-
-                // Walk alias chain
-                String resolvedHex = resolveAliasChain(varId, valuesByMode, variables, new HashSet<>());
-                if (resolvedHex != null) {
-                    result.put(varId, new VariableInfo(vi.id, vi.name, vi.resolvedType, resolvedHex, vi.rawValue));
                 }
             }
         }
 
+        // ── Compute chain closure if requested ──
+        if (chainDownload && allowedIds != null && !allowedIds.isEmpty()) {
+            allowedIds = computeTokenClosure(allowedIds, variables);
+        }
+
+        Map<String, VariableInfo> result = new LinkedHashMap<>();
+        Map<String, Map<String, Object>> rawVars = new LinkedHashMap<>();
+
+        for (Map.Entry<?, ?> e : variables.entrySet()) {
+            String varId = e.getKey().toString();
+
+            // Filter by collection/chain
+            if (allowedIds != null && !allowedIds.contains(varId)) continue;
+
+            Map<?, ?> v = (Map<?, ?>) e.getValue();
+            String name = v.get("name") != null ? v.get("name").toString() : varId;
+            String resolvedType = v.get("resolvedType") != null ? v.get("resolvedType").toString() : "COLOR";
+
+            // Find the first mode's value (prefer mode "103:0" for light)
+            Object firstValue = null;
+            Map<?, ?> valuesByMode = (Map<?, ?>) v.get("valuesByMode");
+            if (valuesByMode != null && !valuesByMode.isEmpty()) {
+                Object lightVal = valuesByMode.get("103:0");
+                if (lightVal == null) {
+                    lightVal = valuesByMode.values().iterator().next();
+                }
+                firstValue = lightVal;
+            }
+
+            // Resolve color value
+            String colorHex = null;
+            String rawValue = null;
+            if (firstValue instanceof Map) {
+                Map<?, ?> valMap = (Map<?, ?>) firstValue;
+                if ("COLOR".equals(resolvedType)) {
+                    if (valMap.containsKey("r")) {
+                        colorHex = rgbaToHex(valMap);
+                    }
+                } else {
+                    rawValue = valMap.get("value") != null ? valMap.get("value").toString() : valMap.toString();
+                }
+            } else if (firstValue instanceof Boolean || firstValue instanceof Number || firstValue instanceof String) {
+                rawValue = firstValue.toString();
+            }
+
+            Map<String, Object> rawVar = new LinkedHashMap<>();
+            rawVar.put("id", varId);
+            rawVar.put("name", name);
+            rawVar.put("resolvedType", resolvedType);
+            rawVar.put("colorHex", colorHex);
+            rawVar.put("rawValue", rawValue);
+            rawVars.put(varId, rawVar);
+
+            result.put(varId, new VariableInfo(varId, name, resolvedType, colorHex, rawValue));
+        }
+
+        // Second pass: resolve aliases by walking the valuesByMode from the original API
+        for (Map.Entry<?, ?> e : variables.entrySet()) {
+            String varId = e.getKey().toString();
+            if (allowedIds != null && !allowedIds.contains(varId)) continue;
+
+            Map<?, ?> v = (Map<?, ?>) e.getValue();
+            Map<?, ?> valuesByMode = (Map<?, ?>) v.get("valuesByMode");
+
+            VariableInfo vi = result.get(varId);
+            if (vi == null || vi.colorHex != null) continue; // already has color
+
+            // Walk alias chain (within filtered set, aliases may point outside)
+            String resolvedHex = resolveAliasChain(varId, valuesByMode, variables, new HashSet<>());
+            if (resolvedHex != null) {
+                result.put(varId, new VariableInfo(vi.id, vi.name, vi.resolvedType, resolvedHex, vi.rawValue));
+            }
+        }
+
         return result;
+    }
+
+    /**
+     * Compute the transitive closure of variable references.
+     * <p>
+     * Given a set of declared variable IDs, walks all VARIABLE_ALIAS references
+     * and returns the complete set of variable IDs in the dependency closure.
+     * This enables "download token A → auto-download all tokens A depends on."
+     *
+     * @param declaredIds  declared variable IDs (e.g. from declared token names)
+     * @param allVariables raw variables map from API (id → variable object with valuesByMode)
+     * @return set of all variable IDs in the transitive closure
+     */
+    @SuppressWarnings("unchecked")
+    public static Set<String> computeTokenClosure(Set<String> declaredIds, Map<?, ?> allVariables) {
+        Set<String> closure = new LinkedHashSet<>(declaredIds);
+        java.util.Queue<String> queue = new java.util.LinkedList<>(declaredIds);
+
+        while (!queue.isEmpty()) {
+            String varId = queue.poll();
+            Map<?, ?> variable = (Map<?, ?>) allVariables.get(varId);
+            if (variable == null) continue;
+
+            Map<?, ?> valuesByMode = (Map<?, ?>) variable.get("valuesByMode");
+            if (valuesByMode == null || valuesByMode.isEmpty()) continue;
+
+            for (Object valueObj : valuesByMode.values()) {
+                if (!(valueObj instanceof Map)) continue;
+                Map<?, ?> valMap = (Map<?, ?>) valueObj;
+                if ("VARIABLE_ALIAS".equals(valMap.get("type"))) {
+                    String aliasId = valMap.get("id") != null ? valMap.get("id").toString() : null;
+                    if (aliasId != null && !closure.contains(aliasId)) {
+                        closure.add(aliasId);
+                        queue.add(aliasId);
+                    }
+                }
+            }
+        }
+
+        return closure;
     }
 
     /**

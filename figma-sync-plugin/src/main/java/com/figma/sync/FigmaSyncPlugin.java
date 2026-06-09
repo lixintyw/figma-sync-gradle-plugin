@@ -1,12 +1,14 @@
 package com.figma.sync;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.gradle.api.DefaultTask;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
 import org.gradle.api.tasks.TaskContainer;
+import org.gradle.api.tasks.TaskProvider;
 
 /**
  * Figma Sync Gradle Plugin.
@@ -44,39 +46,8 @@ public class FigmaSyncPlugin implements Plugin<Project> {
 
         // ── Register tasks ──────────────────────────────────────
 
-        // Icons task
-        project.getTasks().register("syncFigmaIcons", SyncIconsTask.class, task -> {
-            task.setGroup("figma");
-            task.setDescription("Download Figma icons and convert to Android VectorDrawable");
-
-            task.getToken().set(extension.getToken());
-            task.getFileKey().set(extension.getFileKey());
-            task.getStartNode().convention(
-                project.provider(() -> extension.getIcons().startNode));
-            task.getScale().convention(
-                project.provider(() -> extension.getIcons().scale));
-            task.getDeclarations().convention(
-                project.provider(() -> extension.getIcons().declarations));
-            task.getPinnedVersion().set(extension.getPinnedVersion());
-            task.getFormat().convention("svg");
-
-            // Directories
-            task.getSvgDir().convention(
-                project.getLayout().getBuildDirectory().dir("figma/svg"));
-            task.getSvgRtlDir().convention(
-                project.getLayout().getBuildDirectory().dir("figma/svg-rtl"));
-            task.getDrawableDir().convention(
-                project.getLayout().getProjectDirectory().dir("src/main/res/drawable"));
-            task.getDrawableRtlDir().convention(
-                project.getLayout().getProjectDirectory().dir("src/main/res/drawable-ldrtl"));
-
-            // Cache file: build/figma/.figma-cache.json
-            task.getCacheFile().convention(
-                project.getLayout().getBuildDirectory().file("figma/.figma-cache.json"));
-
-            // Only execute if icons are enabled
-            task.onlyIf(t -> extension.getIcons().enabled);
-        });
+        // Icons task(s) — supports single-task and multi-module modes
+        registerIconTasks(project, extension);
 
         // Design tokens task
         project.getTasks().register("syncFigmaTokens", SyncTokensTask.class, task -> {
@@ -89,6 +60,10 @@ public class FigmaSyncPlugin implements Plugin<Project> {
                 project.provider(() -> extension.getIcons().extractTokens));
             task.getOutput().convention(
                 project.provider(() -> extension.getTokens().output));
+            task.getChainDownload().convention(
+                project.provider(() -> extension.getTokens().chainDownload));
+            task.getCollections().convention(
+                project.provider(() -> extension.getTokens().collections));
 
             task.getColorsXmlFile().convention(
                 project.getLayout().getProjectDirectory().file("src/main/res/values/figma_colors.xml"));
@@ -245,6 +220,115 @@ public class FigmaSyncPlugin implements Plugin<Project> {
         // ── Hook into preBuild ──────────────────────────────────
         project.getTasks().matching(t -> t.getName().equals("preBuild"))
             .configureEach(t -> t.dependsOn("syncFigmaIcons"));
+    }
+
+    /**
+     * Register icon download task(s).
+     * <p>
+     * Single-task mode (no modules configured):
+     *   syncFigmaIcons → downloads from icons.startNode
+     * <p>
+     * Multi-module mode (modules { } configured):
+     *   syncFigmaIcons_<name> → downloads each module independently
+     *   syncFigmaIcons        → lifecycle task that depends on all module tasks
+     */
+    private static void registerIconTasks(Project project, FigmaSyncExtension extension) {
+        // Register single syncFigmaIcons for backward compat (no modules)
+        project.getTasks().register("syncFigmaIcons", SyncIconsTask.class, task -> {
+            task.setGroup("figma");
+            task.setDescription("Download Figma icons and convert to Android VectorDrawable");
+
+            task.getToken().set(extension.getToken());
+            task.getFileKey().set(extension.getFileKey());
+            task.getStartNode().convention(
+                project.provider(() -> extension.getIcons().startNode));
+            task.getScale().convention(
+                project.provider(() -> extension.getIcons().scale));
+            task.getDeclarations().convention(
+                project.provider(() -> extension.getIcons().declarations));
+            task.getPinnedVersion().set(extension.getPinnedVersion());
+            task.getFormat().convention("svg");
+
+            task.getSvgDir().convention(
+                project.getLayout().getBuildDirectory().dir("figma/svg"));
+            task.getSvgRtlDir().convention(
+                project.getLayout().getBuildDirectory().dir("figma/svg-rtl"));
+            task.getDrawableDir().convention(
+                project.getLayout().getProjectDirectory().dir("src/main/res/drawable"));
+            task.getDrawableRtlDir().convention(
+                project.getLayout().getProjectDirectory().dir("src/main/res/drawable-ldrtl"));
+
+            task.getCacheFile().convention(
+                project.getLayout().getBuildDirectory().file("figma/.figma-cache.json"));
+
+            // Only execute if icons are enabled AND no modules configured
+            task.onlyIf(t -> extension.getIcons().enabled
+                && extension.getModules().isEmpty());
+        });
+
+        // ── Module tasks (lazy: configured in afterEvaluate) ─────
+        project.afterEvaluate(p -> {
+            java.util.Map<String, FigmaSyncExtension.ModuleConfig> modules = extension.getModules();
+            if (modules.isEmpty()) return; // single-task mode
+
+            List<TaskProvider<SyncIconsTask>> moduleTasks = new ArrayList<>();
+
+            for (java.util.Map.Entry<String, FigmaSyncExtension.ModuleConfig> entry : modules.entrySet()) {
+                String moduleName = entry.getKey();
+                FigmaSyncExtension.ModuleConfig mc = entry.getValue();
+                if (!mc.enabled) continue;
+
+                String taskName = "syncFigmaIcons_" + moduleName;
+                TaskProvider<SyncIconsTask> tp = project.getTasks().register(taskName, SyncIconsTask.class, task -> {
+                    task.setGroup("figma");
+                    task.setDescription("Download Figma icons for module '" + moduleName + "'");
+
+                    task.getToken().set(extension.getToken());
+                    task.getFileKey().set(extension.getFileKey());
+                    task.getStartNode().set(mc.startNode);
+                    task.getScale().set(mc.scale);
+                    task.getPinnedVersion().set(extension.getPinnedVersion());
+                    task.getFormat().convention("svg");
+
+                    // Module-specific declarations override global ones
+                    if (!mc.declarations.isEmpty()) {
+                        task.getDeclarations().set(mc.declarations);
+                    } else {
+                        task.getDeclarations().convention(
+                            project.provider(() -> extension.getIcons().declarations));
+                    }
+
+                    // Module-specific output dirs to avoid conflicts
+                    String dirPrefix = "figma/" + moduleName;
+                    task.getSvgDir().convention(
+                        project.getLayout().getBuildDirectory().dir(dirPrefix + "/svg"));
+                    task.getSvgRtlDir().convention(
+                        project.getLayout().getBuildDirectory().dir(dirPrefix + "/svg-rtl"));
+                    task.getDrawableDir().convention(
+                        project.getLayout().getProjectDirectory().dir("src/main/res/drawable"));
+                    task.getDrawableRtlDir().convention(
+                        project.getLayout().getProjectDirectory().dir("src/main/res/drawable-ldrtl"));
+
+                    task.getCacheFile().convention(
+                        project.getLayout().getBuildDirectory().file(dirPrefix + "/.figma-cache.json"));
+
+                    task.onlyIf(t2 -> mc.enabled);
+                });
+                moduleTasks.add(tp);
+            }
+
+            // Rewire syncFigmaIcons as lifecycle task for modules
+            if (!moduleTasks.isEmpty()) {
+                TaskProvider<?> lifecycleTask = project.getTasks().named("syncFigmaIcons");
+                // Remove the original SyncIconsTask — replace with a plain lifecycle task
+                // Since we can't unregister, make the original no-op and add deps
+                lifecycleTask.configure(task -> {
+                    task.dependsOn(moduleTasks.stream()
+                        .map(tp -> (Object) tp.getName())
+                        .toArray());
+                });
+            }
+        });
     }
 
     /** Read figma.token from rootProject/local.properties. */

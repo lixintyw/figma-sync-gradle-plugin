@@ -2,6 +2,11 @@ package com.figma.sync;
 
 import org.gradle.api.provider.Property;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
 /**
  * DSL extension for the figmaSync plugin.
  *
@@ -13,6 +18,13 @@ import org.gradle.api.provider.Property;
  *         enabled = true
  *         startNode = "14832:59978"
  *         scale = 2
+ *     }
+ *     modules {
+ *         module("vehicle_control") {
+ *             enabled = true
+ *             startNode = "14832:59978"
+ *             scale = 2
+ *         }
  *     }
  * }
  * </pre>
@@ -67,6 +79,47 @@ public abstract class FigmaSyncExtension {
         action.execute(tokens);
     }
 
+    // ── Modules DSL ──────────────────────────────────────────────
+
+    /** Module definitions. Key = module task suffix. */
+    private final Map<String, ModuleConfig> modules = new LinkedHashMap<>();
+
+    public Map<String, ModuleConfig> getModules() {
+        return modules;
+    }
+
+    /** Groovy DSL: modules { module("name") { ... } } */
+    public void modules(groovy.lang.Closure<?> closure) {
+        closure.setDelegate(new ModulesDelegate(this));
+        closure.setResolveStrategy(groovy.lang.Closure.DELEGATE_FIRST);
+        closure.call();
+    }
+
+    /** Kotlin DSL: modules { module("name") { ... } } */
+    public void modules(org.gradle.api.Action<ModulesDelegate> action) {
+        action.execute(new ModulesDelegate(this));
+    }
+
+    /** Delegate for the modules { } block. */
+    public static class ModulesDelegate {
+        private final FigmaSyncExtension ext;
+        ModulesDelegate(FigmaSyncExtension ext) { this.ext = ext; }
+
+        public void module(String name, groovy.lang.Closure<?> closure) {
+            ModuleConfig mc = ext.modules.computeIfAbsent(name, k -> new ModuleConfig(name));
+            closure.setDelegate(mc);
+            closure.setResolveStrategy(groovy.lang.Closure.DELEGATE_FIRST);
+            closure.call();
+        }
+
+        public void module(String name, org.gradle.api.Action<ModuleConfig> action) {
+            ModuleConfig mc = ext.modules.computeIfAbsent(name, k -> new ModuleConfig(name));
+            action.execute(mc);
+        }
+    }
+
+    // ── Config classes ───────────────────────────────────────────
+
     /** Icons sub-configuration. Fields are public for Kotlin DSL access. */
     public static class IconConfig {
         public boolean enabled = false;
@@ -81,6 +134,23 @@ public abstract class FigmaSyncExtension {
         public java.util.List<String> declarations = new java.util.ArrayList<>();
         /** Extract color token bindings from icon components. */
         public boolean extractTokens = false;
+    }
+
+    /**
+     * Per-module icon sync configuration.
+     * Each module maps to a Figma section/frame with its own startNode.
+     */
+    public static class ModuleConfig {
+        public final String name;
+        public boolean enabled = true;
+        public String startNode = "";
+        public int scale = 2;
+        /** Module-specific icon declarations. Empty = use global declarations or download all. */
+        public java.util.List<String> declarations = new java.util.ArrayList<>();
+
+        public ModuleConfig(String name) {
+            this.name = name;
+        }
     }
 
     /** Design tokens sub-configuration. */

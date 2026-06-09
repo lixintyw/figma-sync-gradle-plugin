@@ -50,6 +50,24 @@ dependencies {
 figmaSync {
     fileKey = "G4GyegR4f1uHsW5ZdBuOaY"
     // pinnedVersion = "2361395147552737305"  // 0604 test V91: 取消注释即锁定版本，跳过 API 调用
+
+    // ── 模块管理（W2）────────────────────────────────────────────
+    // 配置 modules { } 后，syncFigmaIcons 自动拆分为独立 Task:
+    //   syncFigmaIcons_vehicleControl, syncFigmaIcons_lighting, ...
+    // 每个模块独立 startNode + declarations + cache，互不干扰。
+    // 不配 modules { } 时保持原有单 Task 行为（向后兼容）。
+    // modules {
+    //     module("vehicle_control") {
+    //         enabled = true
+    //         startNode = "14832:59978"  // 车辆控制 Section
+    //         scale = 2
+    //     }
+    //     module("lighting") {
+    //         enabled = true
+    //         startNode = "14832:60000"  // 灯光 Section
+    //     }
+    // }
+
     tokens {
         enabled = true
         output = "figma_colors.xml"

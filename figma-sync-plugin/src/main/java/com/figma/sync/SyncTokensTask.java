@@ -9,6 +9,7 @@ import org.gradle.api.tasks.*;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,6 +21,9 @@ import java.util.Map;
  * resolves alias chains, and outputs:
  *   - res/values/figma_colors.xml (Android color resources)
  *   - src/main/assets/token_bindings.json (icon→token mapping, if extractTokens enabled)
+ *
+ * Supports token chain download: when chainDownload=true and collections are specified,
+ * only variables in the declared collections + their transitive alias dependencies are fetched.
  */
 public abstract class SyncTokensTask extends DefaultTask {
 
@@ -37,6 +41,16 @@ public abstract class SyncTokensTask extends DefaultTask {
     @Optional
     public abstract Property<String> getOutput();
 
+    /** Enable token chain download (transitive alias resolution). */
+    @Input
+    @Optional
+    public abstract Property<Boolean> getChainDownload();
+
+    /** Variable collection names to include. Empty = all collections. */
+    @Input
+    @Optional
+    public abstract ListProperty<String> getCollections();
+
     @OutputFile
     public abstract RegularFileProperty getColorsXmlFile();
 
@@ -49,12 +63,14 @@ public abstract class SyncTokensTask extends DefaultTask {
         String token = getToken().get();
         String fileKey = getFileKey().get();
         boolean extractTokens = getExtractTokens().getOrElse(false);
+        boolean chainDownload = getChainDownload().getOrElse(false);
+        List<String> collections = getCollections().getOrElse(Collections.emptyList());
 
         getLogger().lifecycle("[Figma] Fetching design tokens (variables/local) ...");
 
-        // ── Fetch all local variables ────────────────────────────
+        // ── Fetch variables with optional chain filtering ─────────
         Map<String, TokenClient.VariableInfo> variables =
-            TokenClient.fetchLocalVariables(token, fileKey);
+            TokenClient.fetchLocalVariablesFiltered(token, fileKey, collections, chainDownload);
 
         getLogger().lifecycle("[Figma] Found {} variables ({} color, {} other)",
             variables.size(),
@@ -70,9 +86,16 @@ public abstract class SyncTokensTask extends DefaultTask {
         xml.append("<resources>\n");
 
         int colorCount = 0;
+        java.util.Set<String> usedNames = new java.util.HashSet<>();
         for (TokenClient.VariableInfo var : variables.values()) {
             if (var.colorHex == null) continue;
-            String resName = "figma_" + sanitizeResName(var.name);
+            String baseName = "figma_" + sanitizeResName(var.name);
+            String resName = baseName;
+            int dedupIdx = 1;
+            while (usedNames.contains(resName)) {
+                resName = baseName + "_" + (++dedupIdx);
+            }
+            usedNames.add(resName);
             xml.append("    <color name=\"").append(resName).append("\">")
                .append(var.colorHex).append("</color>\n");
             colorCount++;
