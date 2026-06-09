@@ -9,6 +9,16 @@ repositories {
 
 dependencies {
     implementation("org.codehaus.groovy:groovy-json:3.0.22")
+
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+tasks.test {
+    useJUnitPlatform()
+    testLogging {
+        events("passed", "skipped", "failed")
+    }
 }
 
 gradlePlugin {
