@@ -4,7 +4,9 @@ import java.io.File;
 import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.HashMap;
 import java.util.Locale;
+import java.util.Map;
 import javax.xml.parsers.DocumentBuilderFactory;
 import org.w3c.dom.*;
 
@@ -13,6 +15,44 @@ import org.w3c.dom.*;
  * Handles: path, rect, circle, g (opacity), fill, stroke, fill-rule.
  */
 public class SvgToVectorConverter {
+
+    /**
+     * Hex color (uppercase #AARRGGBB) → Android resource name (e.g. "figma_text_color_icon_1primary_primary_02_80").
+     * Populated by {@link #loadColorResources(File)} before conversion.
+     * When a hex matches, {@code @color/xxx} is emitted instead of the raw hex.
+     */
+    private static Map<String, String> colorResMap = null;
+
+    /**
+     * Parse an Android {@code colors.xml} file and build a hex→resName lookup.
+     * <p>
+     * Example entry in colors.xml:
+     * {@code <color name="figma_primary_02_80">#CCFFFFFF</color>}
+     * <p>
+     * produces mapping: {@code #CCFFFFFF → "figma_primary_02_80"}.
+     */
+    public static void loadColorResources(File colorsXml) {
+        colorResMap = new HashMap<>();
+        if (!colorsXml.exists()) return;
+
+        try {
+            DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+            dbf.setFeature("http://apache.org/xml/features/nonvalidating/load-dtd-grammar", false);
+            dbf.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+            Document doc = dbf.newDocumentBuilder().parse(colorsXml);
+            NodeList colorNodes = doc.getElementsByTagName("color");
+            for (int i = 0; i < colorNodes.getLength(); i++) {
+                Element el = (Element) colorNodes.item(i);
+                String name = el.getAttribute("name");
+                String value = el.getTextContent().trim().toUpperCase(Locale.ROOT);
+                if (!name.isEmpty() && !value.isEmpty()) {
+                    colorResMap.putIfAbsent(value, name);
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("[SvgConverter] Failed to load color resources: " + e.getMessage());
+        }
+    }
 
     public static int convertAll(File svgDir, File drawableDir) throws Exception {
         drawableDir.mkdirs();
@@ -247,14 +287,27 @@ public class SvgToVectorConverter {
 
         String lc = color.toLowerCase(Locale.ROOT).trim();
         Integer known = KNOWN_COLORS.get(lc);
+        String hex;
         if (known != null) {
             int r = (known >> 16) & 0xFF;
             int g = (known >> 8) & 0xFF;
             int b = known & 0xFF;
-            return String.format("#%02X%02X%02X%02X", alpha, r, g, b);
+            hex = String.format("#%02X%02X%02X%02X", alpha, r, g, b);
+        } else {
+            hex = parseHexColor(color, alpha);
         }
 
-        return parseHexColor(color, alpha);
+        if (hex == null) return null;
+
+        // If color matches a Figma design token, emit @color/ resource reference
+        if (colorResMap != null) {
+            String resName = colorResMap.get(hex.toUpperCase(Locale.ROOT));
+            if (resName != null) {
+                return "@color/figma_" + resName;
+            }
+        }
+
+        return hex;
     }
 
     private static String parseHexColor(String color, int alpha) {
