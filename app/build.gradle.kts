@@ -72,6 +72,8 @@ figmaSync {
         enabled = true
         output = "figma_colors.xml"
         chainDownload = true
+        // tokenSource = "plugin"  // 切换到 Figma 插件导出模式（REST API 不可用时）
+        // pluginExportFile = "src/main/assets/figma_plugin_export.json"
     }
     icons {
         enabled = true

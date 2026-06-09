@@ -162,5 +162,13 @@ public abstract class FigmaSyncExtension {
         public boolean chainDownload = true;
         /** Specific variable collection names to include. Empty = all collections. */
         public java.util.List<String> collections = new java.util.ArrayList<>();
+        /**
+         * Data source mode: "rest_api" (default, uses Figma Variables REST API)
+         * or "plugin" (reads figma_plugin_export.json from Figma plugin).
+         * Use "plugin" when REST API is unavailable (e.g. free Figma plan).
+         */
+        public String tokenSource = "rest_api";
+        /** Path to Figma plugin export JSON, relative to project root. Default: src/main/assets/figma_plugin_export.json */
+        public String pluginExportFile = "src/main/assets/figma_plugin_export.json";
     }
 }

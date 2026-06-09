@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 12px;
+      color: #333;
+      padding: 16px;
+      background: #fff;
+    }
+    h2 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+    p.desc { color: #666; margin-bottom: 12px; line-height: 1.5; }
+
+    .btn-row { display: flex; gap: 8px; margin-bottom: 12px; }
+    button {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-primary { background: #7B61FF; color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #6A4FEF; }
+    .btn-secondary { background: #F0F0F0; color: #333; }
+    .btn-secondary:hover:not(:disabled) { background: #E0E0E0; }
+    .btn-copy { background: #E8F5E9; color: #2E7D32; }
+    .btn-copy:hover:not(:disabled) { background: #C8E6C9; }
+
+    #output {
+      width: 100%;
+      height: 300px;
+      border: 1px solid #E0E0E0;
+      border-radius: 6px;
+      padding: 12px;
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 11px;
+      resize: vertical;
+      background: #FAFAFA;
+      color: #333;
+      white-space: pre;
+      overflow: auto;
+      tab-size: 2;
+    }
+
+    #status {
+      margin-top: 8px;
+      font-size: 11px;
+      min-height: 16px;
+    }
+    .status-ok { color: #2E7D32; }
+    .status-err { color: #C62828; }
+    .status-info { color: #666; }
+
+    .hint {
+      margin-top: 8px;
+      padding: 8px;
+      background: #FFF8E1;
+      border-radius: 4px;
+      font-size: 11px;
+      color: #795548;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>Token Binding Exporter</h2>
+  <p class="desc">
+    Select COMPONENT / COMPONENT_SET / INSTANCE nodes in your Figma file,
+    then click <strong>Export Bindings</strong> to extract variable-linked fill colors.
+    The output JSON is compatible with the figma-sync-gradle-plugin.
+  </p>
+
+  <div class="btn-row">
+    <button class="btn-primary" id="btnExport" onclick="doExport()">
+      Export Bindings
+    </button>
+    <button class="btn-copy" id="btnCopy" onclick="doCopy()" disabled>
+      Copy to Clipboard
+    </button>
+  </div>
+
+  <textarea id="output" placeholder="Click &quot;Export Bindings&quot; to generate JSON..." readonly></textarea>
+
+  <div id="status"></div>
+
+  <p class="hint">
+    <strong>Next step:</strong> Save the JSON output to your Android project at
+    <code>app/src/main/assets/figma_plugin_export.json</code>.
+    The Gradle plugin will read it as a fallback data source for design token sync.
+  </p>
+
+  <script>
+    const output = document.getElementById("output");
+    const status = document.getElementById("status");
+    const btnExport = document.getElementById("btnExport");
+    const btnCopy = document.getElementById("btnCopy");
+
+    function setStatus(msg, cls) {
+      status.textContent = msg;
+      status.className = cls || "";
+    }
+
+    function doExport() {
+      btnExport.disabled = true;
+      btnCopy.disabled = true;
+      output.value = "";
+      setStatus("Extracting token bindings...", "status-info");
+      parent.postMessage({ pluginMessage: { type: "export" } }, "*");
+    }
+
+    function doCopy() {
+      if (!output.value) return;
+      navigator.clipboard.writeText(output.value).then(() => {
+        setStatus("Copied to clipboard!", "status-ok");
+      }).catch(() => {
+        // Fallback: select text
+        output.select();
+        document.execCommand("copy");
+        setStatus("Copied to clipboard! (fallback)", "status-ok");
+      });
+    }
+
+    window.onmessage = (event) => {
+      const msg = event.data.pluginMessage;
+      if (!msg) return;
+
+      if (msg.type === "result") {
+        const json = JSON.stringify(msg.data, null, 2);
+        output.value = json;
+        btnCopy.disabled = false;
+        btnExport.disabled = false;
+        const tokenCount = msg.data.tokens?.length ?? 0;
+        const bindingCount = msg.data.bindings?.length ?? 0;
+        setStatus(
+          `Exported ${bindingCount} component(s) with ${tokenCount} unique token(s).`,
+          "status-ok"
+        );
+      } else if (msg.type === "error") {
+        output.value = "";
+        btnCopy.disabled = true;
+        btnExport.disabled = false;
+        setStatus("Error: " + msg.message, "status-err");
+      }
+    };
+  </script>
+
+</body>
+</html>

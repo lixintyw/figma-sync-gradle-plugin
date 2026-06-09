@@ -64,6 +64,10 @@ public class FigmaSyncPlugin implements Plugin<Project> {
                 project.provider(() -> extension.getTokens().chainDownload));
             task.getCollections().convention(
                 project.provider(() -> extension.getTokens().collections));
+            task.getTokenSource().convention(
+                project.provider(() -> extension.getTokens().tokenSource));
+            task.getPluginExportFile().convention(
+                project.provider(() -> extension.getTokens().pluginExportFile));
 
             task.getColorsXmlFile().convention(
                 project.getLayout().getProjectDirectory().file("src/main/res/values/figma_colors.xml"));

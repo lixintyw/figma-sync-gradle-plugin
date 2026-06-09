@@ -51,6 +51,16 @@ public abstract class SyncTokensTask extends DefaultTask {
     @Optional
     public abstract ListProperty<String> getCollections();
 
+    /** Data source mode: "rest_api" (default) or "plugin" (reads figma_plugin_export.json). */
+    @Input
+    @Optional
+    public abstract Property<String> getTokenSource();
+
+    /** Path to the Figma plugin export JSON (used when tokenSource = "plugin"). */
+    @Input
+    @Optional
+    public abstract Property<String> getPluginExportFile();
+
     @OutputFile
     public abstract RegularFileProperty getColorsXmlFile();
 
@@ -66,16 +76,39 @@ public abstract class SyncTokensTask extends DefaultTask {
         boolean chainDownload = getChainDownload().getOrElse(false);
         List<String> collections = getCollections().getOrElse(Collections.emptyList());
 
-        getLogger().lifecycle("[Figma] Fetching design tokens (variables/local) ...");
+        String tokenSource = getTokenSource().getOrElse("rest_api");
 
-        // ── Fetch variables with optional chain filtering ─────────
-        Map<String, TokenClient.VariableInfo> variables =
-            TokenClient.fetchLocalVariablesFiltered(token, fileKey, collections, chainDownload);
+        Map<String, TokenClient.VariableInfo> variables;
+        List<Map<String, Object>> pluginBindings = null;
 
-        getLogger().lifecycle("[Figma] Found {} variables ({} color, {} other)",
-            variables.size(),
-            variables.values().stream().filter(v -> v.colorHex != null).count(),
-            variables.values().stream().filter(v -> v.colorHex == null).count());
+        if ("plugin".equalsIgnoreCase(tokenSource)) {
+            // ── Read from Figma plugin export JSON ────────────────
+            String exportPath = getPluginExportFile().getOrElse(
+                "src/main/assets/figma_plugin_export.json");
+            File pluginFile = new File(getProject().getProjectDir(), exportPath);
+            if (!pluginFile.exists()) {
+                throw new RuntimeException("Plugin export file not found: " + pluginFile.getAbsolutePath()
+                    + ". Export from Figma plugin first.");
+            }
+            getLogger().lifecycle("[Figma] Reading tokens from plugin export: {}", pluginFile.getPath());
+            TokenClient.PluginExportData export = TokenClient.parsePluginExport(pluginFile);
+            variables = export.tokens;
+            pluginBindings = export.bindings;
+            getLogger().lifecycle("[Figma] Plugin export: {} tokens, {} bindings from '{}'",
+                variables.size(), pluginBindings != null ? pluginBindings.size() : 0,
+                export.fileName);
+        } else {
+            // ── Fetch from REST API ───────────────────────────────
+            getLogger().lifecycle("[Figma] Fetching design tokens (variables/local) ...");
+            variables = TokenClient.fetchLocalVariablesFiltered(token, fileKey, collections, chainDownload);
+        }
+
+        if (tokenSource == null || !"plugin".equalsIgnoreCase(tokenSource)) {
+            getLogger().lifecycle("[Figma] Found {} variables ({} color, {} other)",
+                variables.size(),
+                variables.values().stream().filter(v -> v.colorHex != null).count(),
+                variables.values().stream().filter(v -> v.colorHex == null).count());
+        }
 
         // ── Generate colors.xml ──────────────────────────────────
         File colorsFile = getColorsXmlFile().get().getAsFile();
@@ -112,8 +145,6 @@ public abstract class SyncTokensTask extends DefaultTask {
 
         if (bindingsFile != null && extractTokens) {
             bindingsFile.getParentFile().mkdirs();
-            // For now: export all color variables. Icon-level bindings
-            // will be added in TokenBindingExtractor (next iteration).
             List<Map<String, Object>> tokenList = new ArrayList<>();
             for (TokenClient.VariableInfo var : variables.values()) {
                 if (var.colorHex == null) continue;
@@ -124,9 +155,13 @@ public abstract class SyncTokensTask extends DefaultTask {
                 tokenList.add(entry);
             }
             Map<String, Object> root = new LinkedHashMap<>();
-            root.put("source", "figma_variables_api");
+            root.put("source", "rest_api".equalsIgnoreCase(tokenSource) ? "figma_variables_api" : "figma_plugin");
             root.put("count", tokenList.size());
             root.put("tokens", tokenList);
+            if (pluginBindings != null && !pluginBindings.isEmpty()) {
+                root.put("bindings", pluginBindings);
+                root.put("bindingsCount", pluginBindings.size());
+            }
 
             java.nio.file.Files.write(bindingsFile.toPath(),
                 JsonOutput.toJson(root).getBytes(java.nio.charset.StandardCharsets.UTF_8));

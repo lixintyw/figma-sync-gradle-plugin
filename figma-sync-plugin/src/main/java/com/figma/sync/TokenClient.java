@@ -1,8 +1,11 @@
 package com.figma.sync;
 
+import groovy.json.JsonOutput;
 import groovy.json.JsonSlurper;
 
-import java.awt.Color;
+import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.*;
 
 /**
@@ -271,5 +274,106 @@ public class TokenClient {
         if (v instanceof Number) return ((Number) v).doubleValue();
         if (v instanceof String) return Double.parseDouble((String) v);
         return 0.0;
+    }
+
+    // ── Plugin JSON fallback ─────────────────────────────────────
+
+    /**
+     * Parsed data from the Figma plugin export JSON.
+     * Contains both token definitions (name → color) and component bindings.
+     */
+    public static class PluginExportData {
+        public final String source;
+        public final String exportTime;
+        public final String fileKey;
+        public final String fileName;
+        /** Unique tokens found during export: varId → VariableInfo */
+        public final Map<String, VariableInfo> tokens;
+        /** Component-level fill bindings */
+        public final List<Map<String, Object>> bindings;
+
+        public PluginExportData(String source, String exportTime, String fileKey, String fileName,
+                                 Map<String, VariableInfo> tokens, List<Map<String, Object>> bindings) {
+            this.source = source;
+            this.exportTime = exportTime;
+            this.fileKey = fileKey;
+            this.fileName = fileName;
+            this.tokens = tokens;
+            this.bindings = bindings;
+        }
+    }
+
+    /**
+     * Parse a Figma plugin export JSON file (figma_plugin_export.json).
+     * <p>
+     * Converts the plugin output into the same {@link VariableInfo} map format
+     * as the REST API path, plus component-level binding data.
+     *
+     * @param jsonFile the plugin-exported JSON file
+     * @return parsed data with tokens and bindings
+     */
+    @SuppressWarnings("unchecked")
+    public static PluginExportData parsePluginExport(File jsonFile) throws Exception {
+        String content = new String(Files.readAllBytes(jsonFile.toPath()), StandardCharsets.UTF_8);
+        Map<?, ?> root = (Map<?, ?>) new JsonSlurper().parseText(content);
+
+        String source = strVal(root, "source");
+        String exportTime = strVal(root, "exportTime");
+        String fileKey = strVal(root, "fileKey");
+        String fileName = strVal(root, "fileName");
+
+        Map<String, VariableInfo> tokens = new LinkedHashMap<>();
+
+        // Parse token definitions
+        Object tokensArr = root.get("tokens");
+        if (tokensArr instanceof List) {
+            for (Object t : (List<?>) tokensArr) {
+                if (!(t instanceof Map)) continue;
+                Map<?, ?> tm = (Map<?, ?>) t;
+                String varId = strVal(tm, "varId");
+                String name = strVal(tm, "name");
+                String color = strVal(tm, "color");
+                String resolvedType = strVal(tm, "resolvedType");
+                if (resolvedType.isEmpty()) resolvedType = "COLOR";
+                tokens.put(varId, new VariableInfo(varId, name, resolvedType,
+                    color.isEmpty() ? null : color, null));
+            }
+        }
+
+        // Parse bindings
+        List<Map<String, Object>> bindings = new ArrayList<>();
+        Object bindingsArr = root.get("bindings");
+        if (bindingsArr instanceof List) {
+            for (Object b : (List<?>) bindingsArr) {
+                if (!(b instanceof Map)) continue;
+                Map<?, ?> bm = (Map<?, ?>) b;
+                Map<String, Object> entry = new LinkedHashMap<>();
+                entry.put("componentName", strVal(bm, "componentName"));
+                entry.put("nodeId", strVal(bm, "nodeId"));
+                entry.put("layer", strVal(bm, "layer"));
+                Object fillsObj = bm.get("fills");
+                List<Map<String, String>> fills = new ArrayList<>();
+                if (fillsObj instanceof List) {
+                    for (Object f : (List<?>) fillsObj) {
+                        if (!(f instanceof Map)) continue;
+                        Map<?, ?> fm = (Map<?, ?>) f;
+                        Map<String, String> fill = new LinkedHashMap<>();
+                        fill.put("color", strVal(fm, "color"));
+                        fill.put("tokenId", strVal(fm, "tokenId"));
+                        fill.put("tokenName", strVal(fm, "tokenName"));
+                        fills.add(fill);
+                    }
+                }
+                entry.put("fills", fills);
+                bindings.add(entry);
+            }
+        }
+
+        return new PluginExportData(source, exportTime, fileKey, fileName, tokens, bindings);
+    }
+
+    private static String strVal(Map<?, ?> map, String key) {
+        Object v = map.get(key);
+        return v != null ? v.toString() : "";
     }
 }
