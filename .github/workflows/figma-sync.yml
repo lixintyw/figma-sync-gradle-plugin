@@ -1,0 +1,185 @@
+name: Figma Design Sync
+
+# ── Triggers ──────────────────────────────────────────────────────
+# Scheduled: weekdays at 09:17 local (avoids the :00/:30 spike)
+# Manual: workflow_dispatch with optional module selection
+on:
+  schedule:
+    - cron: '17 1 * * 1-5'   # 09:17 Beijing time (UTC+8 → 01:17 UTC)
+  workflow_dispatch:
+    inputs:
+      module:
+        description: 'Module to sync (empty = all icons + tokens)'
+        required: false
+        type: string
+      freeze_version:
+        description: 'Freeze a named version after sync (e.g. "auto-2026-06-09")'
+        required: false
+        type: string
+
+# ── Permissions ───────────────────────────────────────────────────
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # ── Checkout ─────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ── Java ──────────────────────────────────────────────────────
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # ── Gradle ────────────────────────────────────────────────────
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      # ── Configure Figma token ────────────────────────────────────
+      - name: Configure Figma token
+        env:
+          FIGMA_TOKEN: ${{ secrets.FIGMA_TOKEN }}
+        run: |
+          if [ -n "$FIGMA_TOKEN" ]; then
+            echo "figma.token=$FIGMA_TOKEN" >> local.properties
+            echo "✓ Figma token configured from secrets"
+          else
+            echo "::warning::FIGMA_TOKEN secret not set — sync will be skipped"
+          fi
+
+      # ── Record pre-sync state ────────────────────────────────────
+      - name: Record pre-sync cache state
+        id: pre_state
+        run: |
+          CACHE_FILE="build/figma/.figma-cache.json"
+          if [ -f "$CACHE_FILE" ]; then
+            echo "prev_version=$(jq -r '.version // empty' "$CACHE_FILE")" >> $GITHUB_OUTPUT
+            echo "prev_count=$(jq -r '.assets | length // 0' "$CACHE_FILE")" >> $GITHUB_OUTPUT
+          else
+            echo "prev_version=none" >> $GITHUB_OUTPUT
+            echo "prev_count=0" >> $GITHUB_OUTPUT
+          fi
+
+      # ── Sync tokens ──────────────────────────────────────────────
+      - name: Sync Figma tokens
+        id: sync_tokens
+        run: |
+          if [ -f local.properties ]; then
+            ./gradlew syncFigmaTokens --no-daemon 2>&1 | tee tokens.log
+            echo "colors_count=$(grep -c '<color' app/src/main/res/values/figma_colors.xml 2>/dev/null || echo 0)" >> $GITHUB_OUTPUT
+          else
+            echo "::notice::Skipping — no Figma token configured"
+          fi
+
+      # ── Sync icons ───────────────────────────────────────────────
+      - name: Sync Figma icons
+        id: sync_icons
+        run: |
+          if [ -f local.properties ]; then
+            TASK="syncFigmaIcons"
+            if [ -n "${{ github.event.inputs.module }}" ]; then
+              TASK="syncFigmaIcons_${{ github.event.inputs.module }}"
+            fi
+            ./gradlew $TASK --no-daemon 2>&1 | tee icons.log
+          fi
+
+      # ── Record post-sync state ───────────────────────────────────
+      - name: Record post-sync cache state
+        id: post_state
+        run: |
+          CACHE_FILE="build/figma/.figma-cache.json"
+          if [ -f "$CACHE_FILE" ]; then
+            echo "version=$(jq -r '.version // empty' "$CACHE_FILE")" >> $GITHUB_OUTPUT
+            echo "count=$(jq -r '.assets | length // 0' "$CACHE_FILE")" >> $GITHUB_OUTPUT
+          else
+            echo "version=none" >> $GITHUB_OUTPUT
+            echo "count=0" >> $GITHUB_OUTPUT
+          fi
+
+      # ── Build change summary ─────────────────────────────────────
+      - name: Build change summary
+        id: summary
+        run: |
+          bash .github/scripts/figma-change-summary.sh \
+            "${{ steps.pre_state.outputs.prev_version }}" \
+            "${{ steps.post_state.outputs.version }}" \
+            "${{ steps.pre_state.outputs.prev_count }}" \
+            "${{ steps.post_state.outputs.count }}" \
+            > change-summary.md
+          cat change-summary.md
+
+      # ── Detect git changes ───────────────────────────────────────
+      - name: Check for file changes
+        id: changes
+        run: |
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "No file changes detected."
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "Changes detected:"
+            git diff --stat
+          fi
+
+      # ── Freeze version (if requested) ────────────────────────────
+      - name: Freeze Figma version
+        if: steps.changes.outputs.has_changes == 'true' && github.event.inputs.freeze_version != ''
+        run: |
+          ./gradlew figmaFreezeVersion -PfreezeName="${{ github.event.inputs.freeze_version }}" --no-daemon
+
+      # ── Create PR ─────────────────────────────────────────────────
+      - name: Create Pull Request
+        if: steps.changes.outputs.has_changes == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: |
+            chore(figma): auto-sync design assets
+
+            Version: ${{ steps.post_state.outputs.version }}
+            Token changes: ${{ steps.sync_tokens.outputs.colors_count }} colors
+            Icon changes: ${{ steps.post_state.outputs.count }} icons
+          branch: figma-sync/auto-update
+          delete-branch: true
+          title: |
+            chore(figma): sync design assets — ${{ steps.post_state.outputs.count }} icons
+          body-path: change-summary.md
+          labels: figma, automated
+          add-paths: |
+            app/src/main/res/drawable/*.xml
+            app/src/main/res/drawable-ldrtl/*.xml
+            app/src/main/res/values/figma_colors.xml
+            app/src/main/assets/*.json
+            build/figma/*.json
+
+      # ── Notify on failure ────────────────────────────────────────
+      - name: Notify failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `⚠️ Figma sync failed — ${new Date().toISOString().slice(0, 10)}`,
+              body: `Figma sync workflow [failed](${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}).
+
+            Possible causes:
+            - Figma API token expired or invalid
+            - Figma file structure changed
+            - Network timeout
+
+            Check the [run logs](${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}) for details.`,
+              labels: ['figma', 'bug']
+            });
+            core.notice(`Created alert issue #${issue.data.number}`);
