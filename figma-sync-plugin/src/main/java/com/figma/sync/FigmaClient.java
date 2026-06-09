@@ -87,9 +87,27 @@ public class FigmaClient {
         }
 
         // ── Step 2: Get file tree + version ──────────────────────
-        log(logger, "Fetching file structure (depth=4) ...");
-        Map<?, ?> fileJson = figmaGet(
-            API_HOST + "/v1/files/" + fileKey + "?depth=4", token);
+        // Try depth=4 first; fall back to lower depths if file is too large (HTTP 400)
+        Map<?, ?> fileJson = null;
+        int[] depths = {4, 3, 2};
+        for (int depth : depths) {
+            try {
+                log(logger, "Fetching file structure (depth=" + depth + ") ...");
+                fileJson = figmaGet(
+                    API_HOST + "/v1/files/" + fileKey + "?depth=" + depth
+                        + "&geometry=paths", token);
+                break; // success
+            } catch (RuntimeException e) {
+                if (e.getMessage() != null && e.getMessage().contains("HTTP 400")
+                    && depth > depths[depths.length - 1]) {
+                    log(logger, "Depth " + depth + " too large, retrying with depth="
+                        + (depth > 3 ? 3 : 2) + " ...");
+                    continue;
+                }
+                throw e;
+            }
+        }
+        if (fileJson == null) throw new RuntimeException("Failed to fetch file tree at any depth");
 
         String fileVersion = fileJson.get("version") != null
             ? fileJson.get("version").toString() : "";
